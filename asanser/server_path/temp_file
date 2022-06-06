@@ -1,0 +1,18 @@
+Makefile
+Server.c
+dummy
+server
+temp_file
+
+Message from Client: get dummy
+
+Message from Client: get dummy_copy
+
+Client Disconnected
+
+Message from Client: 
+Client Disconnected
+
+Message from Client: 
+Client Disconnected
+

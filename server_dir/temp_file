@@ -1,0 +1,8 @@
+Makefile
+Server.c
+Server.o
+aggelakos
+server
+temp_file
+
+Message from Client: get

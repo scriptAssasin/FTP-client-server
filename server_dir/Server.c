@@ -11,14 +11,14 @@
 #define SA struct sockaddr
 #define SIZE 500
 
-void getfile(char *,char *);
+void getfile(char *, char *);
 void listFiles(const char *path);
 // void makefile(char *,char *);
-void copy(char b[],int beg,char t[])
+void copy(char b[], int beg, char t[])
 {
     int i;
-    for(i=beg; b[i]!='\n'; i++)
-        t[i-beg]=b[i];
+    for (i = beg; b[i] != '\n'; i++)
+        t[i - beg] = b[i];
 }
 void error(char *msg)
 {
@@ -29,7 +29,7 @@ void error(char *msg)
 void server(int connfd)
 {
     int no_of_bytes;
-    char buffer[SIZE],temp[SIZE];
+    char buffer[SIZE], temp[SIZE];
     bzero(buffer, SIZE);
     while (1)
     {
@@ -38,30 +38,27 @@ void server(int connfd)
         if (no_of_bytes < 0)
             error("Read");
         else if (no_of_bytes == 0)
+        {
+
             printf("\nClient Disconnected\n");
-
-        printf("\nMessage from Client: %s", buffer);
-
-        if (strncmp(buffer, "get", 3) == 0)
-        {
-            listFiles("/dummy");
-            bzero(temp, SIZE);
-            copy(buffer, 4, temp);
-            bzero(buffer, SIZE);
-            getfile(buffer, temp);
-            no_of_bytes = write(connfd, buffer, strlen(buffer));
+            // bzero(buffer, SIZE);
         }
-        else
-        {
-            bzero(buffer, SIZE);
-            strcpy(buffer, "Recieved the message");
-            no_of_bytes = write(connfd, buffer, strlen(buffer));
-        }
+
+
+        printf("\nMessage from Client: %s - Number of bytes: %d ", buffer, no_of_bytes);
+
+        // listFiles("/dummy");
+        bzero(temp, SIZE);
+        strcpy(temp,buffer);
+        bzero(buffer, SIZE);
+        getfile(buffer, temp);
+        no_of_bytes = write(connfd, buffer, strlen(buffer));
 
         if (no_of_bytes < 0)
             error("Write");
 
         bzero(buffer, SIZE);
+        // close(connfd);
     }
 }
 
@@ -112,31 +109,38 @@ int main(int argc, char **argv)
         printf("Server listening..\n");
     len = sizeof(cli);
 
-    // Accept the data packet from client and verification
-    connfd = accept(sockfd, (SA *)&cli, &len);
-    if (connfd < 0)
+    while (1)
     {
-        printf("server accept failed...\n");
-        exit(0);
-    }
-    else
-        printf("server accept the client...\n");
 
-    server(connfd);
+        // Accept the data packet from client and verification
+        connfd = accept(sockfd, (SA *)&cli, &len);
+        if (connfd < 0)
+        {
+            printf("server accept failed...\n");
+            exit(0);
+        }
+        else
+            printf("server accept the client...\n");
+        if (fork() == 0)
+        {
+
+            server(connfd);
+        }
+    }
 }
 
-void makefile(char *array,char *temp)
+void makefile(char *array, char *temp)
 {
     FILE *fp;
     char ch;
-    int i=0;
-    fp=fopen(temp,"w");
-    while(1)
+    int i = 0;
+    fp = fopen(temp, "w");
+    while (1)
     {
-        ch=array[i++];
-        if(ch=='\0')
+        ch = array[i++];
+        if (ch == '\0')
             break;
-        fputc(ch,fp);
+        fputc(ch, fp);
     }
     fclose(fp);
 }
@@ -147,8 +151,8 @@ void listFiles(const char *path)
     DIR *dir = opendir(path);
 
     // Unable to open directory stream
-    if (!dir) 
-        return; 
+    if (!dir)
+        return;
 
     while ((dp = readdir(dir)) != NULL)
     {
@@ -159,26 +163,27 @@ void listFiles(const char *path)
     closedir(dir);
 }
 
-void getfile(char *array,char *temp)
+void getfile(char *array, char *temp)
 {
-    
+    // printf("array: %s, temp: %s \n", array, temp);
+
     FILE *fp;
     char ch;
-    int i=0;
-    fp=fopen(temp,"r");
-    if (fp==NULL)
+    int i = 0;
+    fp = fopen(temp, "r");
+    if (fp == NULL)
     {
-        strcpy(array,"No such file in Server Directory\n");
+        strcpy(array, "No such file in Server Directory\n");
         perror("");
     }
     else
     {
-        while(1)
+        while (1)
         {
-            ch=fgetc(fp);
-            if(ch==EOF)
+            ch = fgetc(fp);
+            if (ch == EOF)
                 break;
-            array[i++]=ch;
+            array[i++] = ch;
         }
         fclose(fp);
     }

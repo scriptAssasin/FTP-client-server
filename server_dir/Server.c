@@ -8,32 +8,28 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <pthread.h>
 #define SA struct sockaddr
 #define SIZE 500
 
+pthread_t workerthreads[100];
+
 void getfile(char *, char *);
 void listFiles(const char *path);
-// void makefile(char *,char *);
-void copy(char b[], int beg, char t[])
-{
-    int i;
-    for (i = beg; b[i] != '\n'; i++)
-        t[i - beg] = b[i];
-}
+
 void error(char *msg)
 {
     perror(msg);
     exit(1);
 }
-
-void server(int connfd)
+// void makefile(char *,char *);
+void *communicationThread(void *connfd)
 {
-    int no_of_bytes;
+int no_of_bytes;
     char buffer[SIZE], temp[SIZE];
     bzero(buffer, SIZE);
-    while (1)
-    {
-        no_of_bytes = read(connfd, buffer, SIZE - 1);
+
+        no_of_bytes = read(*(int*)connfd, buffer, SIZE - 1);
 
         if (no_of_bytes < 0)
             error("Read");
@@ -44,22 +40,22 @@ void server(int connfd)
             // bzero(buffer, SIZE);
         }
 
-
-        printf("\nMessage from Client: %s - Number of bytes: %d ", buffer, no_of_bytes);
+        printf("\nMessage from Client: %s \n", buffer);
 
         // listFiles("/dummy");
         bzero(temp, SIZE);
-        strcpy(temp,buffer);
+        strcpy(temp, buffer);
         bzero(buffer, SIZE);
         getfile(buffer, temp);
-        no_of_bytes = write(connfd, buffer, strlen(buffer));
+        no_of_bytes = write(*(int*)connfd, buffer, strlen(buffer));
 
         if (no_of_bytes < 0)
             error("Write");
 
         bzero(buffer, SIZE);
+
         // close(connfd);
-    }
+    
 }
 
 int main(int argc, char **argv)
@@ -69,7 +65,6 @@ int main(int argc, char **argv)
         printf("No Port Provided\n");
         exit(1);
     }
-
     int portno = atoi(argv[1]);
     int sockfd, connfd, len;
     struct sockaddr_in servaddr, cli;
@@ -111,7 +106,6 @@ int main(int argc, char **argv)
 
     while (1)
     {
-
         // Accept the data packet from client and verification
         connfd = accept(sockfd, (SA *)&cli, &len);
         if (connfd < 0)
@@ -121,11 +115,11 @@ int main(int argc, char **argv)
         }
         else
             printf("server accept the client...\n");
-        if (fork() == 0)
-        {
 
-            server(connfd);
-        }
+        pthread_t thread;
+        pthread_create(&thread, NULL, communicationThread, &connfd);
+        pthread_detach(thread);
+
     }
 }
 

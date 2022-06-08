@@ -5,7 +5,7 @@ CFLAGS = -I$(INCLUDE)
 all: server
 
 server: Server.o
-	gcc -o server Server.c
+	gcc -pthread -o server Server.c
 
 run: server
 	./server 8080

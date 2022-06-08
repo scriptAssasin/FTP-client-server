@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
     char buffer[SIZE], temp[SIZE];
     char dir_name[512];
 
-    if (argc < 3)
+    if (argc < 4)
     {
         printf("usage %s hostname port\n", argv[0]);
         exit(0);
@@ -58,8 +58,8 @@ int main(int argc, char *argv[])
     // while(1)
     // {
     bzero(buffer, SIZE);
-    fgets(buffer, SIZE - 1, stdin);
-    printf("###%s####",buffer);
+    // fgets(buffer, SIZE - 1, stdin);
+    strcpy(buffer,argv[3]);
     buffer[strcspn(buffer, "\n")] = 0;
 
     no_of_bytes = write(sockfd, buffer, strlen(buffer));
@@ -70,8 +70,6 @@ int main(int argc, char *argv[])
     }
     bzero(temp, SIZE);
     strcpy(temp,buffer);
-
-    printf("this is temp: %s \n", temp);
 
     printf("Message from Server:\n\n");
     bzero(buffer, SIZE);

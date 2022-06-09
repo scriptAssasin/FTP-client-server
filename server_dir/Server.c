@@ -13,10 +13,14 @@
 #include <sys/stat.h>
 #include "ADTQueue.h"
 #include <stdbool.h>
+#include "threadPool.h"
 
 #define SA struct sockaddr
 #define SIZE 500
-#define queue_size 5
+#define queueSize 5
+
+static const size_t num_threads = 4;
+static const size_t num_items = 100;
 
 typedef struct queueFile
 {
@@ -27,11 +31,90 @@ typedef struct queueFile
 
 typedef queueFile *QueueFile;
 
+typedef struct toSend
+{
+    bool isDirectory;
+    char path[512];
+    char content[4096];
+} toSend;
+
+typedef toSend *ToSend;
+
 pthread_t workerthreads[100];
 Queue queue;
 
 void getfile(char *, char *, int *connfd);
 void listFiles(const char *path);
+
+void error(char *msg)
+{
+    perror(msg);
+    exit(1);
+}
+
+void getthefile(char *array, char *temp)
+{
+    // printf("array: %s, temp: %s \n", array, temp);
+
+    FILE *fp;
+    char ch;
+    int i = 0;
+
+    printf("WILL OPEN %s : \n", temp);
+    fp = fopen(temp, "r");
+    if (fp == NULL)
+    {
+        strcpy(array, "No such file in Server Directory\n");
+        perror("");
+    }
+    else
+    {
+        while (1)
+        {
+            ch = fgetc(fp);
+            if (ch == EOF)
+                break;
+            array[i++] = ch;
+        }
+        fclose(fp);
+    }
+}
+
+void worker(void *connfd)
+{
+    int *val = connfd;
+    int old = *val;
+    int no_of_bytes;
+    char buffer[SIZE], temp[SIZE];
+
+    // QueueFile value = (QueueFile)queue_node_value(queue, queue_first(queue));
+    // printf("%d - %s \n", value->isDirectory, value->path);
+
+    // bzero(buffer, SIZE);
+
+    // *val += 1000;
+    for (queueNode node = queue_first(queue); node != queue_EOF; node = queue_next(queue, node))
+    {
+        QueueFile value = (QueueFile)queue_node_value(queue, node);
+        printf("%d - %s \n", value->isDirectory, value->path);
+        bzero(buffer, SIZE);
+        getthefile(buffer, value->path);
+        ToSend content = malloc(sizeof(*content));
+        content->isDirectory = (bool)value->isDirectory;
+        strcpy(content->content, buffer);
+        strcpy(content->path, value->path);
+        printf("buffer %s \n", content->content);
+
+        no_of_bytes = write(*(int *)connfd, content, 4096);
+
+        if (no_of_bytes < 0)
+            error("Write");
+
+        bzero(content, SIZE);
+    }
+    // if (*val%2)
+    //     usleep(100000);
+}
 
 int is_regular_file(const char *path)
 {
@@ -78,11 +161,6 @@ void listFilesRecursively(char *basePath, int *connfd)
     closedir(dir);
 }
 
-void error(char *msg)
-{
-    perror(msg);
-    exit(1);
-}
 // void makefile(char *,char *);
 void *communicationThreadFunc(void *connfd)
 {
@@ -106,23 +184,42 @@ void *communicationThreadFunc(void *connfd)
     // listFiles("/dummy");
     bzero(temp, SIZE);
     strcpy(temp, buffer);
-    for (int z = 0; z < 5; z++)
+    // for (int z = 0; z < 5; z++)
+    // {
+    //     if (!fork())
+    //     {
+
+    bzero(buffer, SIZE);
+    getfile(buffer, temp, (int *)connfd);
+
+    //     }
+    // }
+    tpool_t *tm;
+    int *vals;
+    size_t i;
+    // int queuesize = queue_size(queue);
+    if (!fork())
     {
-        if (!fork())
+
+        tm = tpool_create(num_threads);
+        vals = calloc(num_items, sizeof(*vals));
+
+        for (i = 0; i < num_items; i++)
         {
-
-            printf("%s", temp);
-            bzero(buffer, SIZE);
-            getfile(buffer, temp, (int *)connfd);
-            no_of_bytes = write(*(int *)connfd, buffer, strlen(buffer));
-
-            if (no_of_bytes < 0)
-                error("Write");
-
-            bzero(buffer, SIZE);
+            vals[i] = i;
+            tpool_add_work(tm, worker, connfd);
         }
-    }
 
+        tpool_wait(tm);
+
+        for (i = 0; i < num_items; i++)
+        {
+            printf("%d\n", vals[i]);
+        }
+
+        free(vals);
+        tpool_destroy(tm);
+    }
     // close(connfd);
 }
 
@@ -136,7 +233,7 @@ int main(int argc, char **argv)
     int portno = atoi(argv[1]);
     int sockfd, connfd, len;
     struct sockaddr_in servaddr, cli;
-    queue = queue_create(queue_size);
+    queue = queue_create(queueSize);
 
     // socket create and verification
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -242,23 +339,23 @@ void getfile(char *array, char *temp, int *connfd)
         QueueFile val = (QueueFile)queue_node_value(queue, node);
         // printf("%d - %s \n", val->isDirectory, val->path);
     }
-    fp = fopen(temp, "r");
-    if (fp == NULL)
-    {
-        strcpy(array, "No such file in Server Directory\n");
-        perror("");
-    }
-    else
-    {
-        while (1)
-        {
-            ch = fgetc(fp);
-            if (ch == EOF)
-                break;
-            array[i++] = ch;
-        }
-        fclose(fp);
-    }
+    // fp = fopen(temp, "r");
+    // if (fp == NULL)
+    // {
+    //     strcpy(array, "No such file in Server Directory\n");
+    //     perror("");
+    // }
+    // else
+    // {
+    //     while (1)
+    //     {
+    //         ch = fgetc(fp);
+    //         if (ch == EOF)
+    //             break;
+    //         array[i++] = ch;
+    //     }
+    //     fclose(fp);
+    // }
 
-    // strcpy(array, "No such file in Server Directory\n");
+    strcpy(array, "No such file in Server Directory\n");
 }

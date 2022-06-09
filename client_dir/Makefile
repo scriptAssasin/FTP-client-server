@@ -8,7 +8,7 @@ client: Client.o
 	gcc -lpthread -o client Client.c
 
 run: client
-	./client 127.0.0.1 8080 tels
+	./client 127.0.0.1 8080 dummy
 
 clean:
 	rm -f Client.o client

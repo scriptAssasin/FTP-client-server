@@ -20,7 +20,6 @@ void error(char *msg)
     exit(0);
 }
 
-
 int main(int argc, char *argv[])
 {
     int sockfd, portno, no_of_bytes;
@@ -59,7 +58,7 @@ int main(int argc, char *argv[])
     // {
     bzero(buffer, SIZE);
     // fgets(buffer, SIZE - 1, stdin);
-    strcpy(buffer,argv[3]);
+    strcpy(buffer, argv[3]);
     buffer[strcspn(buffer, "\n")] = 0;
 
     no_of_bytes = write(sockfd, buffer, strlen(buffer));
@@ -69,30 +68,36 @@ int main(int argc, char *argv[])
         return 1;
     }
     bzero(temp, SIZE);
-    strcpy(temp,buffer);
+    strcpy(temp, buffer);
 
     printf("Message from Server:\n\n");
     bzero(buffer, SIZE);
-    no_of_bytes = read(sockfd, buffer, SIZE - 1);
-    if (no_of_bytes < 0)
-    {
-        error("Error in reading");
-        // break;
-    }
 
-    if (strcmp(buffer, "No such file in Server Directory\n") != 0)
+    for (int z = 0; z < 5; z++)
     {
-        makefile(buffer, temp);
-        bzero(buffer, SIZE);
-        printf("File created in Client directory.\n");
-    }
-    else
-    {
-        bzero(buffer, SIZE);
-        printf("No such file in Server Directory.\n");
-    }
 
+        no_of_bytes = read(sockfd, buffer, SIZE - 1);
+        if (no_of_bytes < 0)
+        {
+            error("Error in reading");
+            // break;
+        }
+
+        if (strcmp(buffer, "No such file in Server Directory\n") != 0)
+        {
+            makefile(buffer, temp);
+            bzero(buffer, SIZE);
+            printf("File created in Client directory.\n");
+        }
+        else
+        {
+            bzero(buffer, SIZE);
+            printf("No such file in Server Directory.\n");
+        }
+        
+    }
     close(sockfd);
+
     return 0;
 
     // if put has been sent then read file contents in buffer and again write them to server
@@ -126,6 +131,7 @@ void getfile(char *array, char *temp)
 
 void makefile(char *array, char *temp)
 {
+    printf("OK\n");
     FILE *fp;
     char ch;
     int i = 0;

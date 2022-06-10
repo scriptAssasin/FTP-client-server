@@ -3,13 +3,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <stdbool.h>
+
 #define SIZE 500
 #define thread_pool_size 2
 #define queue_size 2
+
+typedef struct toSend
+{
+    bool isDirectory;
+    char path[512];
+    int socket_file_descriptor;
+    char content[512];
+} toSend;
+
+typedef toSend *ToSend;
 
 void getfile(char *, char *);
 void makefile(char *, char *);
@@ -73,10 +87,12 @@ int main(int argc, char *argv[])
     printf("Message from Server:\n\n");
     bzero(buffer, SIZE);
 
+    ToSend tels = malloc(sizeof(*tels));
+
     for (int z = 0; z < 5; z++)
     {
 
-        no_of_bytes = read(sockfd, buffer, SIZE - 1);
+        no_of_bytes = read(sockfd, tels, sizeof(*tels));
         if (no_of_bytes < 0)
         {
             error("Error in reading");
@@ -85,7 +101,21 @@ int main(int argc, char *argv[])
 
         if (strcmp(buffer, "No such file in Server Directory\n") != 0)
         {
-            makefile(buffer, temp);
+
+            if (tels->isDirectory == 0)
+            {
+
+                makefile(tels->content, tels->path);
+            }
+            else
+            {
+                if (0 != mkdir(tels->path, 0777))
+                {
+                    perror("mkdir");
+                    // exit(1);
+                }
+            }
+            // printf("%s\n", tels->content);
             bzero(buffer, SIZE);
             printf("File created in Client directory.\n");
         }
@@ -94,7 +124,6 @@ int main(int argc, char *argv[])
             bzero(buffer, SIZE);
             printf("No such file in Server Directory.\n");
         }
-        
     }
     close(sockfd);
 
@@ -136,6 +165,22 @@ void makefile(char *array, char *temp)
     char ch;
     int i = 0;
     fp = fopen(temp, "w");
+    if (fp == NULL)
+    {
+        printf("\n The file could "
+               "not be opened: %s",
+               temp);
+
+        char str[512];
+        strcpy(str, temp);
+        const char *folder = strrchr(str, '/');
+
+        if (0 != mkdir(folder, 0777))
+        {
+            perror("mkdir");
+            // exit(1);
+        }
+    }
     while (1)
     {
         ch = array[i++];

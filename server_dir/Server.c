@@ -16,7 +16,7 @@
 
 #define SA struct sockaddr
 #define SIZE 500
-#define queue_size 5
+#define queuesize 5
 
 typedef struct queueFile
 {
@@ -27,11 +27,79 @@ typedef struct queueFile
 
 typedef queueFile *QueueFile;
 
+typedef struct toSend
+{
+    bool isDirectory;
+    char path[512];
+    int socket_file_descriptor;
+    char content[512];
+} toSend;
+
+typedef toSend *ToSend;
+
 pthread_t workerthreads[100];
 Queue queue;
 
 void getfile(char *, char *, int *connfd);
 void listFiles(const char *path);
+void makefile(char *, char *, ToSend);
+
+int i = 2;
+
+void error(char *msg)
+{
+    perror(msg);
+    exit(1);
+}
+
+void *worker(void *p)
+{
+    int no_of_bytes;
+    char buffer[SIZE];
+    bzero(buffer, SIZE);
+    for (queueNode node = queue_first(queue); node != queue_EOF; node = queue_next(queue, node))
+    {
+        QueueFile val = (QueueFile)queue_node_value(queue, node);
+
+        if (val->isDirectory == 0)
+        {
+            ToSend file = malloc(sizeof(*file));
+            file->isDirectory = val->isDirectory;
+            strcpy(file->path, val->path);
+
+            makefile(buffer, val->path, file);
+            strcpy(file->content, buffer);
+
+            no_of_bytes = write(val->socket_file_descriptor, file, sizeof(*file));
+
+            if (no_of_bytes < 0)
+                error("Write");
+
+            bzero(buffer, SIZE);
+            bzero(file->content, SIZE);
+        }
+        else
+        {
+            ToSend file = malloc(sizeof(*file));
+            file->isDirectory = val->isDirectory;
+            strcpy(file->path, val->path);
+
+
+            no_of_bytes = write(val->socket_file_descriptor, file, sizeof(*file));
+
+            if (no_of_bytes < 0)
+                error("Write");
+
+            bzero(buffer, SIZE);
+            bzero(file->content, SIZE);
+        }
+        printf("%d - %s \n", val->isDirectory, val->path);
+    }
+
+    // printf("---%d---", *(int*)p++);
+
+    pthread_exit(&i);
+}
 
 int is_regular_file(const char *path)
 {
@@ -59,6 +127,7 @@ void listFilesRecursively(char *basePath, int *connfd)
         {
             QueueFile file = malloc(sizeof(*file));
             file->isDirectory = (bool)is_regular_file(path);
+            printf("---%d----", file->isDirectory);
             // Construct new path from our base path
             strcpy(path, basePath);
             strcat(path, "/");
@@ -78,12 +147,6 @@ void listFilesRecursively(char *basePath, int *connfd)
     closedir(dir);
 }
 
-void error(char *msg)
-{
-    perror(msg);
-    exit(1);
-}
-// void makefile(char *,char *);
 void *communicationThreadFunc(void *connfd)
 {
     int no_of_bytes;
@@ -106,21 +169,24 @@ void *communicationThreadFunc(void *connfd)
     // listFiles("/dummy");
     bzero(temp, SIZE);
     strcpy(temp, buffer);
+    getfile(buffer, temp, (int *)connfd);
     for (int z = 0; z < 5; z++)
     {
-        if (!fork())
-        {
+        int j = 1;
 
-            printf("%s", temp);
-            bzero(buffer, SIZE);
-            getfile(buffer, temp, (int *)connfd);
-            no_of_bytes = write(*(int *)connfd, buffer, strlen(buffer));
+        // if (!fork())
+        // {
 
-            if (no_of_bytes < 0)
-                error("Write");
+        // printf("%s", temp);
+        bzero(buffer, SIZE);
+        pthread_t id;
 
-            bzero(buffer, SIZE);
-        }
+        pthread_create(&id, NULL, worker, &j);
+
+        int *ptr;
+        pthread_join(id, (void **)&ptr);
+
+        // }
     }
 
     // close(connfd);
@@ -136,7 +202,7 @@ int main(int argc, char **argv)
     int portno = atoi(argv[1]);
     int sockfd, connfd, len;
     struct sockaddr_in servaddr, cli;
-    queue = queue_create(queue_size);
+    queue = queue_create(queuesize);
 
     // socket create and verification
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -191,20 +257,30 @@ int main(int argc, char **argv)
     }
 }
 
-void makefile(char *array, char *temp)
+void makefile(char *array, char *temp, ToSend file)
 {
+
     FILE *fp;
     char ch;
     int i = 0;
-    fp = fopen(temp, "w");
-    while (1)
+
+    fp = fopen(temp, "r");
+    if (fp == NULL)
     {
-        ch = array[i++];
-        if (ch == '\0')
-            break;
-        fputc(ch, fp);
+        strcpy(array, "No such file in Server Directory\n");
+        perror("");
     }
-    fclose(fp);
+    else
+    {
+        while (1)
+        {
+            ch = fgetc(fp);
+            if (ch == EOF)
+                break;
+            array[i++] = ch;
+        }
+        fclose(fp);
+    }
 }
 
 void listFiles(const char *path)
@@ -242,23 +318,21 @@ void getfile(char *array, char *temp, int *connfd)
         QueueFile val = (QueueFile)queue_node_value(queue, node);
         // printf("%d - %s \n", val->isDirectory, val->path);
     }
-    fp = fopen(temp, "r");
-    if (fp == NULL)
-    {
-        strcpy(array, "No such file in Server Directory\n");
-        perror("");
-    }
-    else
-    {
-        while (1)
-        {
-            ch = fgetc(fp);
-            if (ch == EOF)
-                break;
-            array[i++] = ch;
-        }
-        fclose(fp);
-    }
-
-    // strcpy(array, "No such file in Server Directory\n");
+    // fp = fopen(temp, "r");
+    // if (fp == NULL)
+    // {
+    //     strcpy(array, "No such file in Server Directory\n");
+    //     perror("");
+    // }
+    // else
+    // {
+    //     while (1)
+    //     {
+    //         ch = fgetc(fp);
+    //         if (ch == EOF)
+    //             break;
+    //         array[i++] = ch;
+    //     }
+    //     fclose(fp);
+    // }
 }

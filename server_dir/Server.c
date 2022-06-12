@@ -1,3 +1,5 @@
+// EVANGELOS FAKORELLIS, sdi1900203
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,8 +18,8 @@
 
 #define SA struct sockaddr
 #define SIZE 500
-#define queuesize 5
 
+// this type of struct is stored in every queue node
 typedef struct queueFile
 {
     bool isDirectory;
@@ -27,180 +29,46 @@ typedef struct queueFile
 
 typedef queueFile *QueueFile;
 
-typedef struct toSend
+// this type of struct is used for data sending between server and client. Gives information about the file if it is directory or file, the relative path and the content
+typedef struct transferInfo
 {
     bool isDirectory;
     char path[512];
-    int socket_file_descriptor;
     char content[512];
-} toSend;
+} transferInfo;
 
-typedef toSend *ToSend;
+typedef transferInfo *TransferInfo;
 
+// thread pool initialized
 pthread_t workerthreads[100];
+// Our queue
 Queue queue;
 
-void getfile(char *, char *, int *connfd);
-void listFiles(const char *path);
-void makefile(char *, char *, ToSend);
+// When a connection is created, a communication thread is created too. This function is assigned to the communication thread created
+void* communicationThreadFunc(void *);
+// scan directory, subdirectories and files recursively and append to queue
+void scanDirectory(char *, int *socketfd);
+// read a file character to character from a specific path, and append every character to the given array
+void readFile(char *, char *);
+// Worker Function given as parameter to worker threads, in order to scan the queue and send data to client
+void* WorkerFunction(void *);
+// helper function to understand if file is directory or just file
+int isFolderorFile(const char *);
 
-int i = 2;
-
-void error(char *msg)
-{
-    perror(msg);
-    exit(1);
-}
-
-void *worker(void *p)
-{
-    int no_of_bytes;
-    char buffer[SIZE];
-    bzero(buffer, SIZE);
-    for (queueNode node = queue_first(queue); node != queue_EOF; node = queue_next(queue, node))
-    {
-        QueueFile val = (QueueFile)queue_node_value(queue, node);
-
-        if (val->isDirectory == 0)
-        {
-            ToSend file = malloc(sizeof(*file));
-            file->isDirectory = val->isDirectory;
-            strcpy(file->path, val->path);
-
-            makefile(buffer, val->path, file);
-            strcpy(file->content, buffer);
-
-            no_of_bytes = write(val->socket_file_descriptor, file, sizeof(*file));
-
-            if (no_of_bytes < 0)
-                error("Write");
-
-            bzero(buffer, SIZE);
-            bzero(file->content, SIZE);
-        }
-        else
-        {
-            ToSend file = malloc(sizeof(*file));
-            file->isDirectory = val->isDirectory;
-            strcpy(file->path, val->path);
-
-
-            no_of_bytes = write(val->socket_file_descriptor, file, sizeof(*file));
-
-            if (no_of_bytes < 0)
-                error("Write");
-
-            bzero(buffer, SIZE);
-            bzero(file->content, SIZE);
-        }
-        printf("%d - %s \n", val->isDirectory, val->path);
-    }
-
-    // printf("---%d---", *(int*)p++);
-
-    pthread_exit(&i);
-}
-
-int is_regular_file(const char *path)
-{
-    struct stat path_stat;
-    stat(path, &path_stat);
-    return S_ISREG(path_stat.st_mode);
-}
-
-void listFilesRecursively(char *basePath, int *connfd)
-{
-    pthread_t self;
-    self = pthread_self();
-
-    char path[1000];
-    struct dirent *dp;
-    DIR *dir = opendir(basePath);
-
-    // Unable to open directory stream
-    if (!dir)
-        return;
-
-    while ((dp = readdir(dir)) != NULL)
-    {
-        if (strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") != 0)
-        {
-            QueueFile file = malloc(sizeof(*file));
-            file->isDirectory = (bool)is_regular_file(path);
-            printf("---%d----", file->isDirectory);
-            // Construct new path from our base path
-            strcpy(path, basePath);
-            strcat(path, "/");
-            strcat(path, dp->d_name);
-            // printf("%s, %d\n", path, is_regular_file(path));
-            if ((bool)is_regular_file(path) == 0)
-                printf("[Thread: %ld]: Adding file %s to the queue... \n", self, path);
-            strcpy(file->path, path);
-            file->socket_file_descriptor = *connfd;
-
-            queue_insert(queue, file);
-
-            listFilesRecursively(path, connfd);
-        }
-    }
-
-    closedir(dir);
-}
-
-void *communicationThreadFunc(void *connfd)
-{
-    int no_of_bytes;
-    char buffer[SIZE], temp[SIZE];
-    bzero(buffer, SIZE);
-
-    no_of_bytes = read(*(int *)connfd, buffer, SIZE - 1);
-
-    if (no_of_bytes < 0)
-        error("Read");
-    else if (no_of_bytes == 0)
-    {
-
-        printf("\nClient Disconnected\n");
-        // bzero(buffer, SIZE);
-    }
-
-    // printf("\nMessage from Client: %s \n", buffer);
-
-    // listFiles("/dummy");
-    bzero(temp, SIZE);
-    strcpy(temp, buffer);
-    getfile(buffer, temp, (int *)connfd);
-    for (int z = 0; z < 5; z++)
-    {
-        int j = 1;
-
-        // if (!fork())
-        // {
-
-        // printf("%s", temp);
-        bzero(buffer, SIZE);
-        pthread_t id;
-
-        pthread_create(&id, NULL, worker, &j);
-
-        int *ptr;
-        pthread_join(id, (void **)&ptr);
-
-        // }
-    }
-
-    // close(connfd);
-}
 
 int main(int argc, char **argv)
 {
-    if (argc < 2)
+    // command line arguments validation check
+    if (argc < 8 || strcmp(argv[1], "-p") != 0 || strcmp(argv[3], "-s") != 0 || strcmp(argv[5], "-q") != 0 || strcmp(argv[7], "-b") != 0)
     {
-        printf("No Port Provided\n");
+        printf("Wrong command line configuration \n");
         exit(1);
     }
-    int portno = atoi(argv[1]);
-    int sockfd, connfd, len;
+
+    int portno = atoi(argv[2]);
+    int queuesize = atoi(argv[6]);
+
+    int sockfd, socketfd, len;
     struct sockaddr_in servaddr, cli;
     queue = queue_create(queuesize);
 
@@ -212,7 +80,8 @@ int main(int argc, char **argv)
         exit(0);
     }
     else
-        printf("Socket successfully created..\n");
+        printf("Server was successfully initialized...\n");
+
     bzero(&servaddr, sizeof(servaddr));
 
     // assign IP, PORT
@@ -220,7 +89,7 @@ int main(int argc, char **argv)
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(portno);
 
-    // Binding newly created socket to given IP and verification
+    // Binding newly created socket to given IP and port
     if ((bind(sockfd, (SA *)&servaddr, sizeof(servaddr))) != 0)
     {
         printf("socket bind failed...\n");
@@ -229,47 +98,47 @@ int main(int argc, char **argv)
     else
         printf("Socket successfully binded..\n");
 
-    // Now server is ready to listen and verification
+    // Now server is ready to listen for connections to given port number
     if ((listen(sockfd, 5)) != 0)
     {
         printf("Listen failed...\n");
         exit(0);
     }
     else
-        printf("Server listening..\n");
+        printf("Listening for connections to port %d\n", portno);
+
     len = sizeof(cli);
 
     while (1)
     {
-        // Accept the data packet from client and verification
-        connfd = accept(sockfd, (SA *)&cli, &len);
-        if (connfd < 0)
+        // Accept the connection from client
+        socketfd = accept(sockfd, (SA *)&cli, &len);
+        if (socketfd < 0)
         {
             printf("server accept failed...\n");
             exit(0);
         }
         else
-            printf("server accept the client...\n");
+            printf("Accepted connection...\n");
 
         pthread_t thread;
-        pthread_create(&thread, NULL, communicationThreadFunc, &connfd);
+        pthread_create(&thread, NULL, communicationThreadFunc, &socketfd);
         pthread_detach(thread);
     }
 }
 
-void makefile(char *array, char *temp, ToSend file)
+void readFile(char *array, char *path)
 {
 
     FILE *fp;
     char ch;
     int i = 0;
 
-    fp = fopen(temp, "r");
+    fp = fopen(path, "r");
+
     if (fp == NULL)
-    {
-        strcpy(array, "No such file in Server Directory\n");
         perror("");
-    }
+
     else
     {
         while (1)
@@ -281,58 +150,140 @@ void makefile(char *array, char *temp, ToSend file)
         }
         fclose(fp);
     }
+
 }
 
-void listFiles(const char *path)
+void scanDirectory(char *basePath, int *socketfd)
 {
-    struct dirent *dp;
-    DIR *dir = opendir(path);
+    // get thread_self in order to get thread id
+    pthread_t self;
+    self = pthread_self();
 
-    // Unable to open directory stream
+    char path[1000];
+    struct dirent *dp;
+    DIR *dir = opendir(basePath);
+
+    // Unable to open directory
     if (!dir)
         return;
 
     while ((dp = readdir(dir)) != NULL)
     {
-        printf("%s\n", dp->d_name);
+        if (strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") != 0)
+        {
+            // create a QueueFile object
+            QueueFile file = malloc(sizeof(*file));
+
+            file->isDirectory = (bool)isFolderorFile(path);
+            // Create relative path
+            strcpy(path, basePath);
+            strcat(path, "/");
+            strcat(path, dp->d_name);
+            
+            printf("[Thread: %ld]: Adding file %s to the queue... \n", self, path);
+
+            strcpy(file->path, path);
+            file->socket_file_descriptor = *socketfd;
+            // append QueueFile object to the Queue
+            queue_insert(queue, file);
+            // recursively scan directory and subdirectories
+            scanDirectory(path, socketfd);
+        }
     }
 
-    // Close directory stream
     closedir(dir);
 }
 
-void getfile(char *array, char *temp, int *connfd)
+void *WorkerFunction(void *p)
 {
-    // printf("array: %s, temp: %s \n", array, temp);
+    int no_of_bytes;
+    char buffer[SIZE];
+    bzero(buffer, SIZE); 
 
-    FILE *fp;
-    char ch;
-    int i = 0;
-
-    // printf("------------%d----------", *(int *)queue_node_value(queue, queue_first(queue)));
-
-    listFilesRecursively(temp, connfd);
-
+    // iterate our queue
     for (queueNode node = queue_first(queue); node != queue_EOF; node = queue_next(queue, node))
     {
         QueueFile val = (QueueFile)queue_node_value(queue, node);
-        // printf("%d - %s \n", val->isDirectory, val->path);
+
+        // if is just file, NOT a directory
+        if (val->isDirectory == 0)
+        {
+            // create a new TransferInfo object 
+            TransferInfo file = malloc(sizeof(*file));
+            file->isDirectory = val->isDirectory;
+            strcpy(file->path, val->path);
+
+            pthread_t self;
+            self = pthread_self();
+            printf("[Thread: %ld]: About to read file %s \n", self, val->path);
+
+            // add file contents to buffer
+            readFile(buffer, val->path);
+            strcpy(file->content, buffer);
+
+            no_of_bytes = write(val->socket_file_descriptor, file, sizeof(*file));
+
+            if (no_of_bytes < 0)
+                perror("Write");
+
+            bzero(buffer, SIZE);
+            bzero(file->content, SIZE);
+        }
+        else
+        {
+            TransferInfo file = malloc(sizeof(*file));
+            file->isDirectory = val->isDirectory;
+            strcpy(file->path, val->path);
+
+            no_of_bytes = write(val->socket_file_descriptor, file, sizeof(*file));
+
+            if (no_of_bytes < 0)
+                perror("Write");
+
+            bzero(buffer, SIZE);
+            bzero(file->content, SIZE);
+        }
     }
-    // fp = fopen(temp, "r");
-    // if (fp == NULL)
-    // {
-    //     strcpy(array, "No such file in Server Directory\n");
-    //     perror("");
-    // }
-    // else
-    // {
-    //     while (1)
-    //     {
-    //         ch = fgetc(fp);
-    //         if (ch == EOF)
-    //             break;
-    //         array[i++] = ch;
-    //     }
-    //     fclose(fp);
-    // }
+}
+
+int isFolderorFile(const char *path)
+{
+    struct stat path_stat;
+    stat(path, &path_stat);
+    return S_ISREG(path_stat.st_mode);
+}
+
+void *communicationThreadFunc(void *socketfd)
+{
+    int no_of_bytes;
+    char buffer[SIZE], temp[SIZE];
+    bzero(buffer, SIZE);
+
+    no_of_bytes = read(*(int *)socketfd, buffer, SIZE - 1);
+
+    if (no_of_bytes < 0)
+        perror("Read");
+
+    else if (no_of_bytes == 0)
+        printf("\nClient Disconnected\n");
+
+    printf("\nAbout to scan directory: %s \n", buffer);
+
+    bzero(temp, SIZE);
+    strcpy(temp, buffer);
+    scanDirectory(temp, (int *)socketfd);
+
+    // fork in order to support multiclent
+    if (!fork())
+    {
+
+        bzero(buffer, SIZE);
+        // create a worker thread and add WorkerFunction to it
+        pthread_create(&workerthreads[0], NULL, WorkerFunction, &queue);
+
+        int *ptr;
+        pthread_join(workerthreads[0], (void **)&ptr);
+    }
+
+    close(*(int *)socketfd);
 }

@@ -1,1 +1,0 @@
-https://cs.gmu.edu/~setia/cs475/slides/lecture5.pdf - semaphores and threads

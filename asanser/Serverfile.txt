@@ -1,2 +1,0 @@
-This file can be used in get function. Server is sending the contents of this file to the Client which will create its own 
-file with the same name in its directory.

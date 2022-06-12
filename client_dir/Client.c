@@ -1,10 +1,10 @@
+// EVANGELOS FAKORELLIS, sdi1900203
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -12,35 +12,27 @@
 #include <stdbool.h>
 
 #define SIZE 500
-#define thread_pool_size 2
-#define queue_size 2
+#define SA struct sockaddr
 
-typedef struct toSend
+// this type of struct is used for data sending between server and client. Gives information about the file if it is directory or file, the relative path and the content
+typedef struct transferInfo
 {
     bool isDirectory;
     char path[512];
-    int socket_file_descriptor;
     char content[512];
-} toSend;
+} transferInfo;
 
-typedef toSend *ToSend;
+typedef transferInfo *TransferInfo;
 
-void getfile(char *, char *);
-void makefile(char *, char *);
-
-void error(char *msg)
-{
-    perror(msg);
-    exit(0);
-}
+void createFile(char *, char *);
 
 int main(int argc, char *argv[])
 {
     int sockfd, portno, no_of_bytes;
+
     struct sockaddr_in serveraddr;
     struct hostent *server;
     char buffer[SIZE], temp[SIZE];
-    char dir_name[512];
 
     if (argc < 4)
     {
@@ -49,73 +41,75 @@ int main(int argc, char *argv[])
     }
 
     portno = atoi(argv[2]);
-    server = gethostbyname(argv[1]);
-    if (server == NULL)
+
+    struct sockaddr_in servaddr, cli;
+
+    // socket create and verification
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1)
     {
-        printf("ERROR, no such host\n");
+        printf("socket creation failed...\n");
         exit(0);
     }
+    else
+        printf("Socket successfully created..\n");
+    bzero(&servaddr, sizeof(servaddr));
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
-        error("Error in socket");
+    // assign IP, PORT
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = inet_addr(argv[1]);
+    servaddr.sin_port = htons(portno);
 
-    bzero((char *)&serveraddr, sizeof(serveraddr));
-    serveraddr.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, (char *)&serveraddr.sin_addr.s_addr, sizeof(server->h_addr));
-    serveraddr.sin_port = htons(portno);
+    // connect the client socket to server socket
+    if (connect(sockfd, (SA *)&servaddr, sizeof(servaddr)) != 0)
+    {
+        printf("connection with the server failed...\n");
+        exit(0);
+    }
+    else
+        printf("connected to the server..\n");
 
-    if (connect(sockfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
-        error("Error in connecting the socket");
-
-    // while(1)
-    // {
     bzero(buffer, SIZE);
-    // fgets(buffer, SIZE - 1, stdin);
     strcpy(buffer, argv[3]);
     buffer[strcspn(buffer, "\n")] = 0;
+
+    if (0 != mkdir(buffer, 0777))
+        perror("mkdir");
 
     no_of_bytes = write(sockfd, buffer, strlen(buffer));
     if (no_of_bytes < 0)
     {
-        error("Error in writing");
+        perror("Error in writing");
         return 1;
     }
+
     bzero(temp, SIZE);
     strcpy(temp, buffer);
 
-    printf("Message from Server:\n\n");
     bzero(buffer, SIZE);
 
-    ToSend tels = malloc(sizeof(*tels));
+    TransferInfo tinfo = malloc(sizeof(*tinfo));
 
-    for (int z = 0; z < 5; z++)
+    for (;;)
     {
 
-        no_of_bytes = read(sockfd, tels, sizeof(*tels));
-        if (no_of_bytes < 0)
+        no_of_bytes = read(sockfd, tinfo, sizeof(*tinfo));
+        if (no_of_bytes < 0 || no_of_bytes == 0)
         {
-            error("Error in reading");
-            // break;
+            perror("Error in reading");
+            exit(1);
         }
 
         if (strcmp(buffer, "No such file in Server Directory\n") != 0)
         {
 
-            if (tels->isDirectory == 0)
-            {
-
-                makefile(tels->content, tels->path);
-            }
+            if (tinfo->isDirectory == 0)
+                createFile(tinfo->content, tinfo->path);
             else
             {
-                if (0 != mkdir(tels->path, 0777))
-                {
+                if (0 != mkdir(tinfo->path, 0777))
                     perror("mkdir");
-                    // exit(1);
-                }
             }
-            // printf("%s\n", tels->content);
             bzero(buffer, SIZE);
             printf("File created in Client directory.\n");
         }
@@ -129,58 +123,26 @@ int main(int argc, char *argv[])
 
     return 0;
 
-    // if put has been sent then read file contents in buffer and again write them to server
-
-    // }
 }
 
-void getfile(char *array, char *temp)
+void createFile(char *array, char *temp)
 {
-    FILE *fp;
-    char ch;
-    int i = 0;
-    fp = fopen(temp, "r");
-    bzero(array, SIZE);
-    if (fp == NULL)
-    {
-        strcpy(array, "No file found\n");
-    }
-    else
-    {
-        while (1)
-        {
-            ch = fgetc(fp);
-            if (ch == EOF)
-                break;
-            array[i++] = ch;
-        }
-        fclose(fp);
-    }
-}
-
-void makefile(char *array, char *temp)
-{
-    printf("OK\n");
     FILE *fp;
     char ch;
     int i = 0;
     fp = fopen(temp, "w");
     if (fp == NULL)
     {
-        printf("\n The file could "
-               "not be opened: %s",
-               temp);
 
         char str[512];
         strcpy(str, temp);
         const char *folder = strrchr(str, '/');
 
         if (0 != mkdir(folder, 0777))
-        {
-            perror("mkdir");
-            // exit(1);
-        }
+            return;
     }
+
+    fp = fopen(temp, "w");
     while (1)
     {
         ch = array[i++];

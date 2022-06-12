@@ -5,10 +5,11 @@ CFLAGS = -I$(INCLUDE)
 all: client
 
 client: Client.o
-	gcc -lpthread -o client Client.c
+	gcc -lpthread -o remoteClient Client.c
 
 run: client
-	./client 127.0.0.1 8080 dummy
+	sudo ./remoteClient 127.0.0.1 8080 dummy
+	# sudo ./remoteClient -i 127.0.0.1 -p 8080 -d dummy
 
 clean:
-	rm -f Client.o client
+	rm -f Client.o remoteClient

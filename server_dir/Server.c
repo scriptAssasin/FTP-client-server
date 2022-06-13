@@ -119,7 +119,7 @@ int main(int argc, char **argv)
             exit(0);
         }
         else
-            printf("Accepted connection...\n");
+            printf("Accepted connection from localhost\n");
 
         pthread_t thread;
         pthread_create(&thread, NULL, communicationThreadFunc, &socketfd);

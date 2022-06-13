@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 #include <stdbool.h>
 
 #define SIZE 500
@@ -24,6 +25,7 @@ typedef struct transferInfo
 
 typedef transferInfo *TransferInfo;
 
+// create file function, creates the given file with the given content
 void createFile(char *, char *);
 
 int main(int argc, char *argv[])
@@ -34,17 +36,17 @@ int main(int argc, char *argv[])
     struct hostent *server;
     char buffer[SIZE], temp[SIZE];
 
-    if (argc < 4)
+    if (argc < 7)
     {
-        printf("usage %s hostname port\n", argv[0]);
+        printf("usage ./remoteClient -i <server_ip> -p <server_port> -d <directory> \n");
         exit(0);
     }
 
-    portno = atoi(argv[2]);
+    portno = atoi(argv[4]);
 
     struct sockaddr_in servaddr, cli;
 
-    // socket create and verification
+    // socket create
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1)
     {
@@ -57,7 +59,7 @@ int main(int argc, char *argv[])
 
     // assign IP, PORT
     servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = inet_addr(argv[1]);
+    servaddr.sin_addr.s_addr = inet_addr(argv[2]);
     servaddr.sin_port = htons(portno);
 
     // connect the client socket to server socket
@@ -70,7 +72,8 @@ int main(int argc, char *argv[])
         printf("connected to the server..\n");
 
     bzero(buffer, SIZE);
-    strcpy(buffer, argv[3]);
+    strcpy(buffer, argv[6]);
+    // remove newline from the end of buffer
     buffer[strcspn(buffer, "\n")] = 0;
 
     if (0 != mkdir(buffer, 0777))
@@ -88,6 +91,7 @@ int main(int argc, char *argv[])
 
     bzero(buffer, SIZE);
 
+    // allocate memory for a TransferInfo object
     TransferInfo tinfo = malloc(sizeof(*tinfo));
 
     for (;;)
@@ -99,50 +103,41 @@ int main(int argc, char *argv[])
             perror("Error in reading");
             exit(1);
         }
+        printf("tinfo dirbool: %d\n", tinfo->isDirectory);
 
-        if (strcmp(buffer, "No such file in Server Directory\n") != 0)
-        {
-
-            if (tinfo->isDirectory == 0)
-                createFile(tinfo->content, tinfo->path);
-            else
-            {
-                if (0 != mkdir(tinfo->path, 0777))
-                    perror("mkdir");
-            }
-            bzero(buffer, SIZE);
-            printf("File created in Client directory.\n");
-        }
-        else
-        {
-            bzero(buffer, SIZE);
-            printf("No such file in Server Directory.\n");
-        }
+        // if (tinfo->isDirectory == 0)
+            createFile(tinfo->content, tinfo->path);
+        // else
+        // {
+        //     if (0 != mkdir(tinfo->path, 0777))
+        //         perror("mkdir");
+        // }
+        bzero(buffer, SIZE);
+        printf("File created in Client directory.\n");
     }
     close(sockfd);
 
     return 0;
-
 }
 
-void createFile(char *array, char *temp)
+void createFile(char *array, char *path)
 {
     FILE *fp;
     char ch;
     int i = 0;
-    fp = fopen(temp, "w");
+    fp = fopen(path, "w");
     if (fp == NULL)
     {
 
         char str[512];
-        strcpy(str, temp);
+        strcpy(str, path);
         const char *folder = strrchr(str, '/');
 
         if (0 != mkdir(folder, 0777))
             return;
     }
 
-    fp = fopen(temp, "w");
+    fp = fopen(path, "w");
     while (1)
     {
         ch = array[i++];
